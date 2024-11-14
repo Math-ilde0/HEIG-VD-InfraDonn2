@@ -19,8 +19,8 @@ const router = createRouter({
       component: () => import('../views/AboutView.vue')
     },
     {
-      path: '/',
-      name: 'MathildeView',
+      path: '/mathilde', // Chemin unique pour MathildeView
+      name: 'mathilde',
       component: MathildeView
     }
   ]

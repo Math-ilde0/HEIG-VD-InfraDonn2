@@ -2,49 +2,119 @@
   <div class="about">
     <h1>InfraDon2</h1>
     <p>This is an about page</p>
-    <p>Counter: {{ datas }}</p>
+    <p>Counter: {{ datas.length }}</p>
     <button type="button" role="button" @click="inc">+1</button>
+    <button type="button" @click="addDocument">Ajouter un document</button>
+    <div v-for="doc in datas" :key="doc._id">
+      <p>{{ doc.title }}</p>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import PouchDB from 'pouchdb' // Import avec la bonne casse
+import PouchDB from 'pouchdb'
 
 export default {
   data() {
     return {
-      datas: 0, // initialize the counter with 0 or any value you prefer
-      databaseReference: null as PouchDB.Database | null
+      datas: [], // Pour stocker les documents récupérés de la base de données
+      databaseReference: null as PouchDB.Database | null,
+      localDB: null as PouchDB.Database | null,
+      remoteDB: null as PouchDB.Database | null
     }
   },
 
   methods: {
     inc() {
-      this.datas++ // increment the counter
+      this.datas.length++ // increment the counter (based on documents length)
     },
 
     initDatabase() {
-      // Initialisation de PouchDB avec l'adresse IP et le port
-      const db = new PouchDB('http://127.0.0.1:5986/cours3') // Assurez-vous que 'cours3' est le nom correct de la base de données
-      if (db) {
-        console.log("Connected to collection 'post'")
-      } else {
-        console.warn('Something went wrong')
-      }
-      // Vérification en affichant dans la console
-      console.log(db)
+      // Initialisation des bases de données locale et distante
+      this.localDB = new PouchDB('local_database')
+      this.remoteDB = new PouchDB('http://127.0.0.1:5986/cours3') // Remplacez 'cours3' par le nom correct
+      this.databaseReference = this.localDB
 
-      // Enregistre la référence à la base de données
-      this.databaseReference = db
+      console.log('Bases de données initialisées')
+
+      // Lancer la synchronisation
+      this.syncDatabase()
+      // Surveiller les changements en temps réel
+      this.watchChanges()
+      // Récupérer tous les documents au démarrage
+      this.fetchAllDocuments()
     },
 
-    fetchData() {
-      // Logique pour récupérer des données depuis PouchDB
+    syncDatabase() {
+      if (this.localDB && this.remoteDB) {
+        this.localDB
+          .sync(this.remoteDB, {
+            live: true,
+            retry: true
+          })
+          .on('change', (info) => {
+            console.log('Changement détecté pendant la synchronisation:', info)
+          })
+          .on('paused', (err) => {
+            console.log('Synchronisation en pause:', err)
+          })
+          .on('active', () => {
+            console.log('Synchronisation reprise')
+          })
+          .on('denied', (err) => {
+            console.error('Synchronisation refusée:', err)
+          })
+          .on('complete', (info) => {
+            console.log('Synchronisation complète:', info)
+          })
+          .on('error', (err) => {
+            console.error('Erreur de synchronisation:', err)
+          })
+      }
+    },
+
+    addDocument() {
+      const doc = {
+        _id: 'doc_' + Date.now(),
+        title: 'Nouveau Document ' + new Date().toLocaleString()
+      }
+      this.localDB
+        ?.put(doc)
+        .then((response) => {
+          console.log('Document ajouté:', response)
+        })
+        .catch((err) => {
+          console.error("Erreur lors de l'ajout du document:", err)
+        })
+    },
+
+    watchChanges() {
+      this.localDB
+        ?.changes({
+          since: 'now',
+          live: true
+        })
+        .on('change', (change) => {
+          console.log('Modification détectée dans la base de données:', change)
+          this.fetchAllDocuments() // Actualiser les documents affichés
+        })
+    },
+
+    fetchAllDocuments() {
+      this.localDB
+        ?.allDocs({ include_docs: true })
+        .then((result) => {
+          console.log('Documents récupérés:', result.rows)
+          this.datas = result.rows.map((row) => row.doc) // Mise à jour des données locales
+        })
+        .catch((err) => {
+          console.error('Erreur lors de la récupération des documents:', err)
+        })
     }
   },
 
   mounted() {
-    this.initDatabase() // called when the component is mounted
+    this.initDatabase() // Initialiser la base de données lors du montage du composant
   }
 }
 </script>
