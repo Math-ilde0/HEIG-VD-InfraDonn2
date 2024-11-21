@@ -1,120 +1,182 @@
 <template>
   <div class="about">
     <h1>InfraDon2</h1>
-    <p>This is an about page</p>
-    <p>Counter: {{ datas.length }}</p>
+    <p>This is Mathilde's page</p>
+    <p>Counter: {{ postsData.length }}</p>
     <button type="button" role="button" @click="inc">+1</button>
     <button type="button" @click="addDocument">Ajouter un document</button>
-    <div v-for="doc in datas" :key="doc._id">
-      <p>{{ doc.title }}</p>
+    <button type="button" @click="putDocument">Ajouter un post</button>
+    <button type="button" @click="fetchData">Récupérer les posts</button>
+    <button type="button" @click="updateLocalDatabase">Synchroniser local</button>
+    <button type="button" @click="updateDistantDatabase">Synchroniser distant</button>
+    <div
+      v-for="post in postsData"
+      :key="post._id"
+      style="border: 1px solid black; margin: 10px; padding: 10px"
+    >
+      <p>Nom : {{ post.post_name }}</p>
+      <p>Contenu : {{ post.post_content }}</p>
+      <p>Date de création : {{ post.attributes.creation_date }}</p>
+      <button @click="deleteData(post._id, post._rev)">Supprimer</button>
     </div>
   </div>
 </template>
 
 <script lang="ts">
 import PouchDB from 'pouchdb'
+import { v4 as uuidv4 } from 'uuid'
+
+// Définition de l'interface Post
+interface Post {
+  _id: string
+  _rev?: string
+  post_name: string
+  post_content: string
+  attributes: {
+    creation_date: string
+  }
+}
 
 export default {
   data() {
     return {
-      datas: [], // Pour stocker les documents récupérés de la base de données
-      databaseReference: null as PouchDB.Database | null,
+      postsData: [] as Post[], // Liste des posts récupérés
       localDB: null as PouchDB.Database | null,
-      remoteDB: null as PouchDB.Database | null
+      remoteDB: 'http://admin:admin@localhost:5984/post' // URL de la base distante
     }
   },
 
   methods: {
     inc() {
-      this.datas.length++ // increment the counter (based on documents length)
+      console.log('Increment appelé')
     },
 
     initDatabase() {
-      // Initialisation des bases de données locale et distante
-      this.localDB = new PouchDB('local_database')
-      this.remoteDB = new PouchDB('http://127.0.0.1:5986/cours3') // Remplacez 'cours3' par le nom correct
-      this.databaseReference = this.localDB
-
-      console.log('Bases de données initialisées')
-
-      // Lancer la synchronisation
-      this.syncDatabase()
-      // Surveiller les changements en temps réel
-      this.watchChanges()
-      // Récupérer tous les documents au démarrage
-      this.fetchAllDocuments()
+      this.localDB = new PouchDB('post')
+      console.log('Base locale initialisée')
+      this.updateLocalDatabase()
+      this.fetchData()
     },
 
-    syncDatabase() {
-      if (this.localDB && this.remoteDB) {
+    fetchData() {
+      if (this.localDB) {
         this.localDB
-          .sync(this.remoteDB, {
-            live: true,
-            retry: true
+          .allDocs({
+            include_docs: true
           })
-          .on('change', (info) => {
-            console.log('Changement détecté pendant la synchronisation:', info)
+          .then((result: any) => {
+            console.log('fetchData success =>', result.rows)
+            this.postsData = result.rows.map((row: any) => ({
+              _id: row.doc._id,
+              _rev: row.doc._rev,
+              post_name: row.doc.post_name || 'Sans nom',
+              post_content: row.doc.post_content || 'Sans contenu',
+              attributes: {
+                creation_date: row.doc.attributes?.creation_date || new Date().toISOString()
+              }
+            }))
           })
-          .on('paused', (err) => {
-            console.log('Synchronisation en pause:', err)
-          })
-          .on('active', () => {
-            console.log('Synchronisation reprise')
-          })
-          .on('denied', (err) => {
-            console.error('Synchronisation refusée:', err)
-          })
-          .on('complete', (info) => {
-            console.log('Synchronisation complète:', info)
-          })
-          .on('error', (err) => {
-            console.error('Erreur de synchronisation:', err)
+          .catch((error) => {
+            console.error('fetchData error', error)
           })
       }
     },
 
     addDocument() {
       const doc = {
-        _id: 'doc_' + Date.now(),
-        title: 'Nouveau Document ' + new Date().toLocaleString()
+        _id: 'doc_' + Date.now(), // Génère un ID unique basé sur le timestamp actuel
+        title: 'Nouveau Document ' + new Date().toLocaleString() // Ajoute un titre avec la date et l'heure
       }
-      this.localDB
-        ?.put(doc)
-        .then((response) => {
-          console.log('Document ajouté:', response)
-        })
-        .catch((err) => {
-          console.error("Erreur lors de l'ajout du document:", err)
-        })
+
+      if (this.localDB) {
+        this.localDB
+          .put(doc)
+          .then((response) => {
+            console.log('Document ajouté avec succès :', response)
+            this.fetchData() // Rafraîchit les données après l'ajout
+          })
+          .catch((error) => {
+            console.error("Erreur lors de l'ajout du document :", error)
+          })
+      } else {
+        console.error('Base de données locale non initialisée')
+      }
     },
 
-    watchChanges() {
-      this.localDB
-        ?.changes({
-          since: 'now',
-          live: true
-        })
-        .on('change', (change) => {
-          console.log('Modification détectée dans la base de données:', change)
-          this.fetchAllDocuments() // Actualiser les documents affichés
-        })
+    putDocument() {
+      const post: Post = {
+        _id: uuidv4(), // Génère un ID unique pour le document
+        post_name: 'Post_' + new Date().toISOString(),
+        post_content: "Contenu de l'article",
+        attributes: {
+          creation_date: new Date().toISOString()
+        }
+      }
+
+      if (this.localDB) {
+        this.localDB
+          .put(post)
+          .then(() => {
+            console.log('Post ajouté avec succès')
+            this.fetchData() // Rafraîchit les données après ajout
+          })
+          .catch((error) => {
+            console.error("Erreur lors de l'ajout du post", error)
+          })
+      } else {
+        console.error('Base de données locale non initialisée')
+      }
     },
 
-    fetchAllDocuments() {
-      this.localDB
-        ?.allDocs({ include_docs: true })
-        .then((result) => {
-          console.log('Documents récupérés:', result.rows)
-          this.datas = result.rows.map((row) => row.doc) // Mise à jour des données locales
-        })
-        .catch((err) => {
-          console.error('Erreur lors de la récupération des documents:', err)
-        })
+    updateLocalDatabase() {
+      if (this.localDB) {
+        this.localDB.replicate
+          .from(this.remoteDB)
+          .on('complete', () => {
+            console.log('Synchronisation locale terminée')
+            this.fetchData()
+          })
+          .on('error', (error) => {
+            console.error('Erreur de synchronisation locale', error)
+          })
+      }
+    },
+
+    updateDistantDatabase() {
+      if (this.localDB) {
+        this.localDB.replicate
+          .to(this.remoteDB)
+          .on('complete', () => {
+            console.log('Synchronisation distante terminée')
+          })
+          .on('error', (error) => {
+            console.error('Erreur de synchronisation distante', error)
+          })
+      }
+    },
+
+    async deleteData(id: string, rev: string) {
+      console.log('Call deleteData', id, rev)
+      if (!id || !rev) {
+        console.error('Invalid id or rev for deletion')
+        return
+      }
+      if (this.localDB) {
+        try {
+          await this.localDB.remove(id, rev)
+          console.log('deleteData success')
+          this.fetchData()
+        } catch (error) {
+          console.error('deleteData error', error)
+        }
+      } else {
+        console.error('Database not initialized')
+      }
     }
   },
 
   mounted() {
-    this.initDatabase() // Initialiser la base de données lors du montage du composant
+    this.initDatabase()
   }
 }
 </script>
