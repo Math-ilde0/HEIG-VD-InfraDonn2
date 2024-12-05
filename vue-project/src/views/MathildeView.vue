@@ -14,9 +14,13 @@
       :key="post._id"
       style="border: 1px solid black; margin: 10px; padding: 10px"
     >
-      <p>Nom : {{ post.post_name }}</p>
-      <p>Contenu : {{ post.post_content }}</p>
-      <p>Date de création : {{ post.attributes.creation_date }}</p>
+      <p v-if="post.post_name">Nom : {{ post.post_name }}</p>
+      <p v-else>Nom : Non défini</p>
+
+      <p v-if="post.post_content">Contenu : {{ post.post_content }}</p>
+      <p v-else>Contenu : Non défini</p>
+
+      <p>Date de création : {{ post.attributes.creation_date || 'Non défini' }}</p>
       <button @click="deleteData(post._id, post._rev)">Supprimer</button>
     </div>
   </div>
@@ -30,10 +34,10 @@ import { v4 as uuidv4 } from 'uuid'
 interface Post {
   _id: string
   _rev?: string
-  post_name: string
-  post_content: string
+  post_name?: string
+  post_content?: string
   attributes: {
-    creation_date: string
+    creation_date?: string
   }
 }
 
@@ -67,12 +71,12 @@ export default {
           .then((result: any) => {
             console.log('fetchData success =>', result.rows)
             this.postsData = result.rows.map((row: any) => ({
-              _id: row.doc._id,
-              _rev: row.doc._rev,
-              post_name: row.doc.post_name || 'Sans nom',
-              post_content: row.doc.post_content || 'Sans contenu',
+              _id: row.doc._id || 'Sans ID',
+              _rev: row.doc._rev || '',
+              post_name: row.doc.post_name || 'Nom non défini',
+              post_content: row.doc.post_content || 'Contenu non défini',
               attributes: {
-                creation_date: row.doc.attributes?.creation_date || new Date().toISOString()
+                creation_date: row.doc.attributes?.creation_date || 'Date non définie'
               }
             }))
           })
@@ -84,8 +88,8 @@ export default {
 
     addDocument() {
       const doc = {
-        _id: 'doc_' + Date.now(), // Génère un ID unique basé sur le timestamp actuel
-        title: 'Nouveau Document ' + new Date().toLocaleString() // Ajoute un titre avec la date et l'heure
+        _id: 'doc_' + Date.now(),
+        title: 'Nouveau Document ' + new Date().toLocaleString()
       }
 
       if (this.localDB) {
@@ -93,7 +97,7 @@ export default {
           .put(doc)
           .then((response) => {
             console.log('Document ajouté avec succès :', response)
-            this.fetchData() // Rafraîchit les données après l'ajout
+            this.fetchData()
           })
           .catch((error) => {
             console.error("Erreur lors de l'ajout du document :", error)
@@ -105,7 +109,7 @@ export default {
 
     putDocument() {
       const post: Post = {
-        _id: uuidv4(), // Génère un ID unique pour le document
+        _id: uuidv4(),
         post_name: 'Post_' + new Date().toISOString(),
         post_content: "Contenu de l'article",
         attributes: {
@@ -118,7 +122,7 @@ export default {
           .put(post)
           .then(() => {
             console.log('Post ajouté avec succès')
-            this.fetchData() // Rafraîchit les données après ajout
+            this.fetchData()
           })
           .catch((error) => {
             console.error("Erreur lors de l'ajout du post", error)
